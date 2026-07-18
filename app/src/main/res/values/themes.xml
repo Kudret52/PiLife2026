@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.LifeOS" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.PiLife" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
