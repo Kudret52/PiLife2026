@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../../services/user_service.dart';
 
@@ -10,14 +13,62 @@ import '../news/news_screen.dart';
 import '../pipazar/pi_pazar_screen.dart';
 import '../pipazar/favorites_screen.dart';
 import '../pipazar/my_products_screen.dart';
+import '../pipazar/product_detail_screen.dart';
 import '../chat/conversations_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
   static const Color primaryColor = Color(0xFF5B2D90);
   static const Color accentColor = Color(0xFFF4AF2C);
   static const Color backgroundColor = Color(0xFFF7F5FC);
+
+  bool loading = true;
+
+  List recentProducts = [];
+  List announcements = [];
+  String? piPrice;
+
+  @override
+  void initState() {
+    super.initState();
+    loadDashboard();
+  }
+
+  Future<void> loadDashboard() async {
+    try {
+      final response = await http.get(
+        Uri.parse("https://lifeos.cadinindiyari.com/api/get_dashboard.php"),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+
+        if (data["success"] == true) {
+          recentProducts = data["recent_products"] ?? [];
+          announcements = data["announcements"] ?? [];
+          piPrice = data["pi_price"]?.toString();
+        }
+      });
+    } catch (e) {
+      debugPrint("loadDashboard hata: $e");
+
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,46 +86,286 @@ class HomeScreen extends StatelessWidget {
         ),
       ),
 
-      body: Padding(
-        padding: const EdgeInsets.all(20),
+      body: RefreshIndicator(
+        onRefresh: loadDashboard,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
 
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
 
-          children: [
-            const SizedBox(height: 10),
+            children: [
+              const SizedBox(height: 10),
 
-            const Text(
-              "Hoş Geldin 👋",
-              style: TextStyle(
-                fontSize: 30,
-                fontWeight: FontWeight.bold,
-                color: primaryColor,
+              const Text(
+                "Hoş Geldin 👋",
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.bold,
+                  color: primaryColor,
+                ),
               ),
-            ),
 
-            const SizedBox(height: 8),
+              const SizedBox(height: 8),
 
-            Text(
-              "${UserService.fullname} (@${UserService.username})",
-              style: const TextStyle(
-                fontSize: 18,
-                color: primaryColor,
-                fontWeight: FontWeight.w600,
+              Text(
+                "${UserService.fullname} (@${UserService.username})",
+                style: const TextStyle(
+                  fontSize: 18,
+                  color: primaryColor,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
 
-            const SizedBox(height: 5),
+              const SizedBox(height: 5),
 
-            const Text(
-              "Bugün ne yapmak istiyorsun?",
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
+              const Text(
+                "Bugün ne yapmak istiyorsun?",
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
 
-            const SizedBox(height: 25),
+              const SizedBox(height: 25),
 
-            Expanded(
-              child: GridView.count(
+              if (loading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 30),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else ...[
+                // Pi fiyat bilgisi
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: primaryColor,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          color: accentColor,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Text(
+                          "π",
+                          style: TextStyle(
+                            color: primaryColor,
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "Pi Fiyatı",
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              (piPrice != null && piPrice!.isNotEmpty)
+                                  ? piPrice!
+                                  : "Yakında",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Duyurular
+                if (announcements.isNotEmpty) ...[
+                  const SizedBox(height: 25),
+                  const Text(
+                    "Günün Duyuruları",
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: primaryColor,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ...announcements.map(
+                    (a) => Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: accentColor.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.campaign_rounded,
+                            color: accentColor,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  a["title"]?.toString() ?? "",
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  a["message"]?.toString() ?? "",
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+
+                // Son eklenen ilanlar
+                if (recentProducts.isNotEmpty) ...[
+                  const SizedBox(height: 15),
+                  const Text(
+                    "Son Eklenen İlanlar",
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: primaryColor,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 170,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: recentProducts.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 12),
+                      itemBuilder: (context, index) {
+                        final item = recentProducts[index];
+
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ProductDetailScreen(item: item),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            width: 140,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.06),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                item["image"] != null &&
+                                        item["image"].toString().isNotEmpty
+                                    ? Image.network(
+                                        item["image"].toString(),
+                                        height: 90,
+                                        width: double.infinity,
+                                        fit: BoxFit.cover,
+                                      )
+                                    : Container(
+                                        height: 90,
+                                        width: double.infinity,
+                                        color: backgroundColor,
+                                        child: const Icon(Icons.image),
+                                      ),
+                                Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item["title"]?.toString() ?? "",
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        "${item["price"]} Pi",
+                                        style: const TextStyle(
+                                          color: Colors.green,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 25),
+              ],
+
+              const Text(
+                "Hızlı Menü",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: primaryColor,
+                ),
+              ),
+
+              const SizedBox(height: 15),
+
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
                 crossAxisCount: 2,
                 crossAxisSpacing: 15,
                 mainAxisSpacing: 15,
@@ -143,8 +434,10 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-          ],
+
+              const SizedBox(height: 10),
+            ],
+          ),
         ),
       ),
     );
