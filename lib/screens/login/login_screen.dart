@@ -47,6 +47,8 @@ class _LoginScreenState extends State<LoginScreen> {
     if (result["success"] == true) {
       await UserService.setUser(result["user"]);
 
+      if (!mounted) return;
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const HomeScreen()),

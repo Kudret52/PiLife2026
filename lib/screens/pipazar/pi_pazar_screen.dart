@@ -195,6 +195,8 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
     } catch (e) {
       debugPrint("createProduct hata: $e");
 
+      if (!mounted) return;
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text("Hata: $e")));
@@ -364,7 +366,7 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
                   editPriceController.text.trim(),
                 );
 
-                if (mounted) {
+                if (dialogContext.mounted) {
                   Navigator.pop(dialogContext);
                 }
               },
@@ -446,9 +448,9 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
               onPressed: () async {
                 await createProduct();
 
-                if (!mounted) return;
-
-                Navigator.pop(dialogContext);
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
               },
               child: const Text("Kaydet"),
             ),
@@ -562,6 +564,15 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
                                         icon: const Icon(
                                           Icons.edit,
                                           color: Colors.orange,
+                                        ),
+                                        onPressed: () {
+                                          showEditDialog(item);
+                                        },
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.delete,
+                                          color: Colors.red,
                                         ),
                                         onPressed: () {
                                           deleteProduct(

@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../../services/user_service.dart';
 import '../chat/chat_screen.dart';
@@ -8,6 +11,39 @@ class ProductDetailScreen extends StatelessWidget {
   final dynamic item;
 
   const ProductDetailScreen({super.key, required this.item});
+
+  Future<void> addFavorite(BuildContext context) async {
+    try {
+      final response = await http.post(
+        Uri.parse("https://lifeos.cadinindiyari.com/api/toggle_favorite.php"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "user_id": UserService.id,
+          "product_id": int.parse(item["id"].toString()),
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              data["success"] == true
+                  ? "Favorilere eklendi."
+                  : "Favorilere eklenirken bir hata oluştu.",
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Hata: $e")));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -99,6 +135,21 @@ class ProductDetailScreen extends StatelessWidget {
                   ),
 
                   const SizedBox(height: 30),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(
+                        Icons.favorite_border,
+                        color: Colors.red,
+                      ),
+                      label: const Text("Favorilere Ekle"),
+                      onPressed: () => addFavorite(context),
+                    ),
+                  ),
+
+                  const SizedBox(height: 15),
 
                   if (!isOwner) ...[
                     SizedBox(
