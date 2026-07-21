@@ -15,6 +15,7 @@ import '../pipazar/favorites_screen.dart';
 import '../pipazar/my_products_screen.dart';
 import '../pipazar/product_detail_screen.dart';
 import '../chat/conversations_screen.dart';
+import '../notifications/notifications_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List recentProducts = [];
   List announcements = [];
   String? piPrice;
+  int unreadNotifications = 0;
 
   @override
   void initState() {
@@ -43,7 +45,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> loadDashboard() async {
     try {
       final response = await http.get(
-        Uri.parse("https://lifeos.cadinindiyari.com/api/get_dashboard.php"),
+        Uri.parse(
+          "https://lifeos.cadinindiyari.com/api/get_dashboard.php"
+          "?user_id=${UserService.id}",
+        ),
       );
 
       final data = jsonDecode(response.body);
@@ -57,6 +62,8 @@ class _HomeScreenState extends State<HomeScreen> {
           recentProducts = data["recent_products"] ?? [];
           announcements = data["announcements"] ?? [];
           piPrice = data["pi_price"]?.toString();
+          unreadNotifications =
+              int.tryParse(data["unread_notifications"].toString()) ?? 0;
         }
       });
     } catch (e) {
@@ -84,6 +91,53 @@ class _HomeScreenState extends State<HomeScreen> {
           "PiLife",
           style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1),
         ),
+        actions: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications_rounded),
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const NotificationsScreen(),
+                    ),
+                  );
+                  loadDashboard();
+                },
+              ),
+              if (unreadNotifications > 0)
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    decoration: const BoxDecoration(
+                      color: accentColor,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      unreadNotifications > 9
+                          ? "9+"
+                          : unreadNotifications.toString(),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: primaryColor,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
 
       body: RefreshIndicator(
