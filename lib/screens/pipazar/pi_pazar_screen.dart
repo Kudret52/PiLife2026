@@ -9,6 +9,20 @@ import '../../services/user_service.dart';
 
 import 'product_detail_screen.dart';
 
+const List<String> kProductCategories = [
+  "Elektronik",
+  "Giyim",
+  "Ev & Yaşam",
+  "Araç",
+  "Emlak",
+  "Hobi",
+  "Kitap",
+  "Spor",
+  "Diğer",
+];
+
+const List<String> kProductConditions = ["Sıfır", "İkinci El"];
+
 class PiPazarScreen extends StatefulWidget {
   const PiPazarScreen({super.key});
 
@@ -17,16 +31,26 @@ class PiPazarScreen extends StatefulWidget {
 }
 
 class _PiPazarScreenState extends State<PiPazarScreen> {
+  static const Color primaryColor = Color(0xFF5B2D90);
+
   final titleController = TextEditingController();
   final descriptionController = TextEditingController();
   final priceController = TextEditingController();
+  final locationController = TextEditingController();
   final searchController = TextEditingController();
+
+  String selectedCategory = kProductCategories.first;
+  String selectedCondition = kProductConditions.first;
+  bool negotiable = false;
+
+  String activeCategoryFilter = "Tümü";
 
   List products = [];
   List filteredProducts = [];
   Set<int> favoriteProducts = {};
   final picker = ImagePicker();
   File? selectedImage;
+
   @override
   void initState() {
     super.initState();
@@ -94,7 +118,7 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
       if (data["success"] == true) {
         setState(() {
           products = data["products"];
-          filteredProducts = List.from(products);
+          applyFilters();
         });
       }
     } catch (e) {
@@ -124,17 +148,34 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
     }
   }
 
+  void applyFilters() {
+    final query = searchController.text.toLowerCase();
+
+    filteredProducts = products.where((product) {
+      final title = product["title"].toString().toLowerCase();
+      final description = product["description"].toString().toLowerCase();
+
+      final matchesQuery =
+          query.isEmpty || title.contains(query) || description.contains(query);
+
+      final matchesCategory =
+          activeCategoryFilter == "Tümü" ||
+          product["category"].toString() == activeCategoryFilter;
+
+      return matchesQuery && matchesCategory;
+    }).toList();
+  }
+
   void searchProducts(String value) {
     setState(() {
-      filteredProducts = products.where((product) {
-        final title = product["title"].toString().toLowerCase();
+      applyFilters();
+    });
+  }
 
-        final description = product["description"].toString().toLowerCase();
-
-        final query = value.toLowerCase();
-
-        return title.contains(query) || description.contains(query);
-      }).toList();
+  void selectCategoryFilter(String category) {
+    setState(() {
+      activeCategoryFilter = category;
+      applyFilters();
     });
   }
 
@@ -160,6 +201,10 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
           "description": descriptionController.text.trim(),
           "price": priceController.text.trim(),
           "image": imagePath,
+          "category": selectedCategory,
+          "condition_status": selectedCondition,
+          "location": locationController.text.trim(),
+          "negotiable": negotiable ? 1 : 0,
         }),
       );
 
@@ -175,6 +220,7 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
         titleController.clear();
         descriptionController.clear();
         priceController.clear();
+        locationController.clear();
 
         await loadProducts();
 
@@ -245,11 +291,33 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
     }
   }
 
+  Future<void> toggleSold(int productId) async {
+    try {
+      final response = await http.post(
+        Uri.parse("https://lifeos.cadinindiyari.com/api/toggle_sold.php"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"user_id": UserService.id, "product_id": productId}),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (data["success"] == true) {
+        await loadProducts();
+      }
+    } catch (e) {
+      debugPrint("toggleSold hata: $e");
+    }
+  }
+
   Future<void> updateProduct(
     int productId,
     String title,
     String description,
     String price,
+    String category,
+    String condition,
+    String location,
+    bool isNegotiable,
   ) async {
     try {
       String imagePath = "";
@@ -269,6 +337,10 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
           "description": description,
           "price": price,
           "image": imagePath,
+          "category": category,
+          "condition_status": condition,
+          "location": location,
+          "negotiable": isNegotiable ? 1 : 0,
         }),
       );
 
@@ -301,78 +373,163 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
       text: item["price"].toString(),
     );
 
+    final editLocationController = TextEditingController(
+      text: item["location"]?.toString() ?? "",
+    );
+
+    String editCategory =
+        kProductCategories.contains(item["category"]?.toString())
+        ? item["category"].toString()
+        : kProductCategories.first;
+
+    String editCondition =
+        kProductConditions.contains(item["condition_status"]?.toString())
+        ? item["condition_status"].toString()
+        : kProductConditions.first;
+
+    bool editNegotiable = item["negotiable"].toString() == "1";
+
     selectedImage = null;
 
     showDialog(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text("İlan Düzenle"),
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text("İlan Düzenle"),
 
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: editTitleController,
-                  decoration: const InputDecoration(labelText: "Başlık"),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: editTitleController,
+                      decoration: const InputDecoration(labelText: "Başlık"),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    TextField(
+                      controller: editDescriptionController,
+                      decoration: const InputDecoration(labelText: "Açıklama"),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    TextField(
+                      controller: editPriceController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: "Fiyat"),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    DropdownButtonFormField<String>(
+                      initialValue: editCategory,
+                      decoration: const InputDecoration(labelText: "Kategori"),
+                      items: kProductCategories
+                          .map(
+                            (c) => DropdownMenuItem(value: c, child: Text(c)),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() => editCategory = value);
+                        }
+                      },
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    RadioGroup<String>(
+                      groupValue: editCondition,
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() => editCondition = value);
+                        }
+                      },
+                      child: Row(
+                        children: kProductConditions.map((c) {
+                          return Expanded(
+                            child: RadioListTile<String>(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                c,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              value: c,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+
+                    TextField(
+                      controller: editLocationController,
+                      decoration: const InputDecoration(
+                        labelText: "Konum (ör. İstanbul)",
+                      ),
+                    ),
+
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text("Pazarlık payı var"),
+                      value: editNegotiable,
+                      onChanged: (value) {
+                        setDialogState(() => editNegotiable = value);
+                      },
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        await pickImage();
+                        setDialogState(() {});
+                      },
+                      icon: const Icon(Icons.image),
+                      label: const Text("Yeni Resim Seç"),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    if (selectedImage != null)
+                      Image.file(selectedImage!, height: 120),
+                  ],
+                ),
+              ),
+
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text("İptal"),
                 ),
 
-                const SizedBox(height: 15),
+                ElevatedButton(
+                  onPressed: () async {
+                    await updateProduct(
+                      int.parse(item["id"].toString()),
+                      editTitleController.text.trim(),
+                      editDescriptionController.text.trim(),
+                      editPriceController.text.trim(),
+                      editCategory,
+                      editCondition,
+                      editLocationController.text.trim(),
+                      editNegotiable,
+                    );
 
-                TextField(
-                  controller: editDescriptionController,
-                  decoration: const InputDecoration(labelText: "Açıklama"),
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                    }
+                  },
+                  child: const Text("Kaydet"),
                 ),
-
-                const SizedBox(height: 15),
-
-                TextField(
-                  controller: editPriceController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: "Fiyat"),
-                ),
-
-                const SizedBox(height: 15),
-
-                ElevatedButton.icon(
-                  onPressed: pickImage,
-                  icon: const Icon(Icons.image),
-                  label: const Text("Yeni Resim Seç"),
-                ),
-
-                const SizedBox(height: 10),
-
-                if (selectedImage != null)
-                  Image.file(selectedImage!, height: 120),
               ],
-            ),
-          ),
-
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-              },
-              child: const Text("İptal"),
-            ),
-
-            ElevatedButton(
-              onPressed: () async {
-                await updateProduct(
-                  int.parse(item["id"].toString()),
-                  editTitleController.text.trim(),
-                  editDescriptionController.text.trim(),
-                  editPriceController.text.trim(),
-                );
-
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                }
-              },
-              child: const Text("Kaydet"),
-            ),
-          ],
+            );
+          },
         );
       },
     );
@@ -382,79 +539,150 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
     titleController.clear();
     descriptionController.clear();
     priceController.clear();
+    locationController.clear();
+    selectedCategory = kProductCategories.first;
+    selectedCondition = kProductConditions.first;
+    negotiable = false;
+    selectedImage = null;
 
     showDialog(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text("Yeni İlan"),
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text("Yeni İlan"),
 
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(labelText: "Başlık"),
-                ),
-
-                const SizedBox(height: 15),
-
-                TextField(
-                  controller: descriptionController,
-                  decoration: const InputDecoration(labelText: "Açıklama"),
-                ),
-
-                const SizedBox(height: 15),
-
-                TextField(
-                  controller: priceController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: "Fiyat"),
-                ),
-                const SizedBox(height: 15),
-
-                ElevatedButton.icon(
-                  onPressed: pickImage,
-                  icon: const Icon(Icons.image),
-                  label: const Text("Resim Seç"),
-                ),
-
-                const SizedBox(height: 10),
-
-                if (selectedImage != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: Image.file(
-                      selectedImage!,
-                      height: 120,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: titleController,
+                      decoration: const InputDecoration(labelText: "Başlık"),
                     ),
-                  ),
+
+                    const SizedBox(height: 15),
+
+                    TextField(
+                      controller: descriptionController,
+                      decoration: const InputDecoration(labelText: "Açıklama"),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    TextField(
+                      controller: priceController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: "Fiyat"),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedCategory,
+                      decoration: const InputDecoration(labelText: "Kategori"),
+                      items: kProductCategories
+                          .map(
+                            (c) => DropdownMenuItem(value: c, child: Text(c)),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() => selectedCategory = value);
+                        }
+                      },
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    RadioGroup<String>(
+                      groupValue: selectedCondition,
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() => selectedCondition = value);
+                        }
+                      },
+                      child: Row(
+                        children: kProductConditions.map((c) {
+                          return Expanded(
+                            child: RadioListTile<String>(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                c,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              value: c,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+
+                    TextField(
+                      controller: locationController,
+                      decoration: const InputDecoration(
+                        labelText: "Konum (ör. İstanbul)",
+                      ),
+                    ),
+
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text("Pazarlık payı var"),
+                      value: negotiable,
+                      onChanged: (value) {
+                        setDialogState(() => negotiable = value);
+                      },
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        await pickImage();
+                        setDialogState(() {});
+                      },
+                      icon: const Icon(Icons.image),
+                      label: const Text("Resim Seç"),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    if (selectedImage != null)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.file(
+                          selectedImage!,
+                          height: 120,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text("İptal"),
+                ),
+
+                ElevatedButton(
+                  onPressed: () async {
+                    await createProduct();
+
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                    }
+                  },
+                  child: const Text("Kaydet"),
+                ),
               ],
-            ),
-          ),
-
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-              },
-              child: const Text("İptal"),
-            ),
-
-            ElevatedButton(
-              onPressed: () async {
-                await createProduct();
-
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                }
-              },
-              child: const Text("Kaydet"),
-            ),
-          ],
+            );
+          },
         );
       },
     );
@@ -473,7 +701,7 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
             child: TextField(
               controller: searchController,
               onChanged: searchProducts,
@@ -487,6 +715,33 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
             ),
           ),
 
+          SizedBox(
+            height: 46,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              children: ["Tümü", ...kProductCategories].map((category) {
+                final isActive = category == activeCategoryFilter;
+
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(category),
+                    selected: isActive,
+                    selectedColor: primaryColor,
+                    labelStyle: TextStyle(
+                      color: isActive ? Colors.white : Colors.black87,
+                      fontWeight: isActive
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                    onSelected: (_) => selectCategoryFilter(category),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+
           Expanded(
             child: filteredProducts.isEmpty
                 ? const Center(child: Text("İlan bulunamadı."))
@@ -494,6 +749,8 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
                     itemCount: filteredProducts.length,
                     itemBuilder: (context, index) {
                       final item = filteredProducts[index];
+                      final isSold = item["sold"].toString() == "1";
+                      final isNegotiable = item["negotiable"].toString() == "1";
 
                       return GestureDetector(
                         onTap: () {
@@ -513,14 +770,47 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
                               children: [
                                 if (item["image"] != null &&
                                     item["image"].toString().isNotEmpty)
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Image.network(
-                                      item["image"].toString(),
-                                      width: double.infinity,
-                                      height: 220,
-                                      fit: BoxFit.cover,
-                                    ),
+                                  Stack(
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Opacity(
+                                          opacity: isSold ? 0.4 : 1,
+                                          child: Image.network(
+                                            item["image"].toString(),
+                                            width: double.infinity,
+                                            height: 220,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                      ),
+                                      if (isSold)
+                                        Positioned.fill(
+                                          child: Center(
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 18,
+                                                    vertical: 8,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.red,
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: const Text(
+                                                "SATILDI",
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 18,
+                                                  letterSpacing: 1,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
 
                                 const SizedBox(height: 10),
@@ -536,6 +826,69 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
                                 const SizedBox(height: 8),
 
                                 Text(item["description"].toString()),
+
+                                const SizedBox(height: 10),
+
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    if ((item["category"] ?? "")
+                                        .toString()
+                                        .isNotEmpty)
+                                      Chip(
+                                        label: Text(
+                                          item["category"].toString(),
+                                          style: const TextStyle(fontSize: 11),
+                                        ),
+                                        padding: EdgeInsets.zero,
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                    if ((item["condition_status"] ?? "")
+                                        .toString()
+                                        .isNotEmpty)
+                                      Chip(
+                                        label: Text(
+                                          item["condition_status"].toString(),
+                                          style: const TextStyle(fontSize: 11),
+                                        ),
+                                        padding: EdgeInsets.zero,
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                    if (isNegotiable)
+                                      const Chip(
+                                        label: Text(
+                                          "Pazarlıklı",
+                                          style: TextStyle(fontSize: 11),
+                                        ),
+                                        padding: EdgeInsets.zero,
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                  ],
+                                ),
+
+                                if ((item["location"] ?? "")
+                                    .toString()
+                                    .isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.location_on,
+                                        size: 15,
+                                        color: Colors.grey,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        item["location"].toString(),
+                                        style: const TextStyle(
+                                          color: Colors.grey,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
 
                                 const SizedBox(height: 8),
 
@@ -560,6 +913,22 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.end,
                                     children: [
+                                      IconButton(
+                                        icon: Icon(
+                                          isSold
+                                              ? Icons.undo_rounded
+                                              : Icons.sell_rounded,
+                                          color: Colors.blueGrey,
+                                        ),
+                                        tooltip: isSold
+                                            ? "Satıldı işaretini kaldır"
+                                            : "Satıldı olarak işaretle",
+                                        onPressed: () {
+                                          toggleSold(
+                                            int.parse(item["id"].toString()),
+                                          );
+                                        },
+                                      ),
                                       IconButton(
                                         icon: const Icon(
                                           Icons.edit,

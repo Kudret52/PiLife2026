@@ -184,6 +184,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
         title: const Text("Bildirimler"),
         centerTitle: true,
         actions: [
@@ -192,7 +194,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               onPressed: markAllAsRead,
               child: const Text(
                 "Tümünü Okundu Yap",
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
         ],
