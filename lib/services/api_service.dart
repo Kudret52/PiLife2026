@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 
 class ApiService {
@@ -35,10 +36,20 @@ class ApiService {
     required String password,
   }) async {
     try {
+      String deviceInfo = "Bilinmeyen cihaz";
+      try {
+        deviceInfo =
+            "${Platform.operatingSystem} ${Platform.operatingSystemVersion}";
+      } catch (_) {}
+
       final response = await http.post(
         Uri.parse("$baseUrl/login.php"),
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"login": login, "password": password}),
+        body: jsonEncode({
+          "login": login,
+          "password": password,
+          "device_info": deviceInfo,
+        }),
       );
 
       return jsonDecode(response.body);

@@ -1,5 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/user_service.dart';
+import 'login_history_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -58,6 +64,102 @@ class _SettingsScreenState extends State<SettingsScreen> {
       applicationName: "PiLife",
       applicationVersion: "1.0.0",
       applicationLegalese: "© 2026 PiLife",
+    );
+  }
+
+  Future<void> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    try {
+      final response = await http.post(
+        Uri.parse("https://lifeos.cadinindiyari.com/api/change_password.php"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "user_id": UserService.id,
+          "current_password": currentPassword,
+          "new_password": newPassword,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(data["message"]?.toString() ?? "Bilinmeyen hata"),
+        ),
+      );
+
+      if (data["success"] == true) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Hata: $e")));
+    }
+  }
+
+  void showChangePasswordDialog() {
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    final confirmController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text("Şifre Değiştir"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: currentController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: "Mevcut Şifre"),
+                ),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: newController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: "Yeni Şifre"),
+                ),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: confirmController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: "Yeni Şifre (Tekrar)",
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text("İptal"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (newController.text != confirmController.text) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(content: Text("Yeni şifreler eşleşmiyor.")),
+                  );
+                  return;
+                }
+
+                changePassword(currentController.text, newController.text);
+              },
+              child: const Text("Kaydet"),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -121,6 +223,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
               value: autoLoginEnabled,
               activeThumbColor: accentColor,
               onChanged: saveAutoLogin,
+            ),
+          ),
+
+          Card(
+            elevation: 4,
+            margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: accentColor,
+                child: Icon(Icons.lock, color: primaryColor),
+              ),
+              title: const Text(
+                "Şifre Değiştir",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: const Text("Hesap şifrenizi güncelleyin"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: showChangePasswordDialog,
+            ),
+          ),
+
+          Card(
+            elevation: 4,
+            margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: accentColor,
+                child: Icon(Icons.history, color: primaryColor),
+              ),
+              title: const Text(
+                "Giriş Geçmişi",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: const Text("Hesabınıza yapılan girişleri görün"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginHistoryScreen()),
+                );
+              },
             ),
           ),
 
