@@ -16,6 +16,7 @@ import '../pipazar/my_products_screen.dart';
 import '../pipazar/product_detail_screen.dart';
 import '../chat/conversations_screen.dart';
 import '../notifications/notifications_screen.dart';
+import '../calendar/calendar_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -464,6 +465,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     Icons.task_alt_rounded,
                     "Görevler",
                     const TaskScreen(),
+                  ),
+
+                  kart(
+                    context,
+                    Icons.calendar_month_rounded,
+                    "Takvim",
+                    const CalendarScreen(),
                   ),
 
                   kart(
