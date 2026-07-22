@@ -60,8 +60,15 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
   Future<List<String>> uploadImages(List<File> images) async {
     List<String> uploaded = [];
 
+    debugPrint("uploadImages: ${images.length} dosya yüklenecek");
+
     for (final file in images) {
       try {
+        debugPrint("uploadImages: yükleniyor -> ${file.path}");
+
+        final exists = await file.exists();
+        debugPrint("uploadImages: dosya var mı? $exists");
+
         var request = http.MultipartRequest(
           "POST",
           Uri.parse(
@@ -75,15 +82,25 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
 
         final response = await request.send();
         final responseString = await response.stream.bytesToString();
+
+        debugPrint(
+          "uploadImages: sunucu cevabı (${response.statusCode}) -> $responseString",
+        );
+
         final data = jsonDecode(responseString);
 
         if (data["success"] == true) {
           uploaded.add(data["path"].toString());
+        } else {
+          debugPrint("uploadImages: sunucu success=false döndürdü");
         }
-      } catch (e) {
+      } catch (e, st) {
         debugPrint("uploadImages hata: $e");
+        debugPrint("uploadImages stacktrace: $st");
       }
     }
+
+    debugPrint("uploadImages: toplam yüklenen = ${uploaded.length}");
 
     return uploaded;
   }
@@ -473,7 +490,9 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
                     ElevatedButton.icon(
                       onPressed: () async {
                         final picked = await picker.pickMultiImage(
-                          imageQuality: 80,
+                          imageQuality: 70,
+                          maxWidth: 1600,
+                          maxHeight: 1600,
                         );
                         if (picked.isNotEmpty) {
                           setDialogState(() {
@@ -680,7 +699,9 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
                     ElevatedButton.icon(
                       onPressed: () async {
                         final picked = await picker.pickMultiImage(
-                          imageQuality: 80,
+                          imageQuality: 70,
+                          maxWidth: 1600,
+                          maxHeight: 1600,
                         );
                         if (picked.isNotEmpty) {
                           setDialogState(() {
@@ -697,45 +718,48 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
                     if (addImages.isNotEmpty)
                       SizedBox(
                         height: 90,
-                        child: ListView.separated(
+                        child: SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
-                          itemCount: addImages.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 8),
-                          itemBuilder: (context, i) {
-                            return Stack(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.file(
-                                    addImages[i],
-                                    width: 90,
-                                    height: 90,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                                Positioned(
-                                  top: 2,
-                                  right: 2,
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      setDialogState(
-                                        () => addImages.removeAt(i),
-                                      );
-                                    },
-                                    child: const CircleAvatar(
-                                      radius: 11,
-                                      backgroundColor: Colors.black54,
-                                      child: Icon(
-                                        Icons.close,
-                                        size: 14,
-                                        color: Colors.white,
+                          child: Row(
+                            children: List.generate(addImages.length, (i) {
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.file(
+                                        addImages[i],
+                                        width: 90,
+                                        height: 90,
+                                        fit: BoxFit.cover,
                                       ),
                                     ),
-                                  ),
+                                    Positioned(
+                                      top: 2,
+                                      right: 2,
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setDialogState(
+                                            () => addImages.removeAt(i),
+                                          );
+                                        },
+                                        child: const CircleAvatar(
+                                          radius: 11,
+                                          backgroundColor: Colors.black54,
+                                          child: Icon(
+                                            Icons.close,
+                                            size: 14,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            );
-                          },
+                              );
+                            }),
+                          ),
                         ),
                       ),
                   ],
