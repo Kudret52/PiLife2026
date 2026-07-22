@@ -49,7 +49,6 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
   List filteredProducts = [];
   Set<int> favoriteProducts = {};
   final picker = ImagePicker();
-  File? selectedImage;
 
   @override
   void initState() {
@@ -58,53 +57,35 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
     loadFavorites();
   }
 
-  Future<void> pickImage() async {
-    final image = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 80,
-    );
+  Future<List<String>> uploadImages(List<File> images) async {
+    List<String> uploaded = [];
 
-    if (image != null) {
-      setState(() {
-        selectedImage = File(image.path);
-      });
-    }
-  }
+    for (final file in images) {
+      try {
+        var request = http.MultipartRequest(
+          "POST",
+          Uri.parse(
+            "https://lifeos.cadinindiyari.com/api/upload_product_image.php",
+          ),
+        );
 
-  Future<String> uploadImage() async {
-    if (selectedImage == null) {
-      return "";
-    }
+        request.files.add(
+          await http.MultipartFile.fromPath("image", file.path),
+        );
 
-    try {
-      var request = http.MultipartRequest(
-        "POST",
-        Uri.parse(
-          "https://lifeos.cadinindiyari.com/api/upload_product_image.php",
-        ),
-      );
+        final response = await request.send();
+        final responseString = await response.stream.bytesToString();
+        final data = jsonDecode(responseString);
 
-      request.files.add(
-        await http.MultipartFile.fromPath("image", selectedImage!.path),
-      );
-
-      final response = await request.send();
-
-      final responseString = await response.stream.bytesToString();
-
-      debugPrint(responseString);
-
-      final data = jsonDecode(responseString);
-
-      if (data["success"] == true) {
-        return data["path"].toString();
+        if (data["success"] == true) {
+          uploaded.add(data["path"].toString());
+        }
+      } catch (e) {
+        debugPrint("uploadImages hata: $e");
       }
-
-      return "";
-    } catch (e) {
-      debugPrint("uploadImage hata: $e");
-      return "";
     }
+
+    return uploaded;
   }
 
   Future<void> loadProducts() async {
@@ -179,7 +160,7 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
     });
   }
 
-  Future<void> createProduct() async {
+  Future<void> createProduct(List<File> images) async {
     if (titleController.text.trim().isEmpty ||
         descriptionController.text.trim().isEmpty ||
         priceController.text.trim().isEmpty) {
@@ -190,7 +171,8 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
     }
 
     try {
-      String imagePath = await uploadImage();
+      List<String> uploadedPaths = await uploadImages(images);
+      String coverImage = uploadedPaths.isNotEmpty ? uploadedPaths.first : "";
 
       final response = await http.post(
         Uri.parse("https://lifeos.cadinindiyari.com/api/create_product.php"),
@@ -200,7 +182,8 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
           "title": titleController.text.trim(),
           "description": descriptionController.text.trim(),
           "price": priceController.text.trim(),
-          "image": imagePath,
+          "image": coverImage,
+          "images": uploadedPaths,
           "category": selectedCategory,
           "condition_status": selectedCondition,
           "location": locationController.text.trim(),
@@ -318,13 +301,16 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
     String condition,
     String location,
     bool isNegotiable,
+    List<File> images,
   ) async {
     try {
-      String imagePath = "";
+      List<String> newUploadedPaths = [];
+      String coverImage = "";
 
-      // Yeni resim seçilmişse yükle
-      if (selectedImage != null) {
-        imagePath = await uploadImage();
+      // Yeni resim(ler) seçilmişse yükle
+      if (images.isNotEmpty) {
+        newUploadedPaths = await uploadImages(images);
+        coverImage = newUploadedPaths.isNotEmpty ? newUploadedPaths.first : "";
       }
 
       final response = await http.post(
@@ -336,7 +322,8 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
           "title": title,
           "description": description,
           "price": price,
-          "image": imagePath,
+          "image": coverImage,
+          "images": newUploadedPaths,
           "category": category,
           "condition_status": condition,
           "location": location,
@@ -389,7 +376,7 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
 
     bool editNegotiable = item["negotiable"].toString() == "1";
 
-    selectedImage = null;
+    List<File> editImages = [];
 
     showDialog(
       context: context,
@@ -485,17 +472,68 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
 
                     ElevatedButton.icon(
                       onPressed: () async {
-                        await pickImage();
-                        setDialogState(() {});
+                        final picked = await picker.pickMultiImage(
+                          imageQuality: 80,
+                        );
+                        if (picked.isNotEmpty) {
+                          setDialogState(() {
+                            editImages.addAll(picked.map((x) => File(x.path)));
+                          });
+                        }
                       },
-                      icon: const Icon(Icons.image),
-                      label: const Text("Yeni Resim Seç"),
+                      icon: const Icon(Icons.add_photo_alternate),
+                      label: const Text("Yeni Fotoğraf(lar) Ekle"),
                     ),
 
                     const SizedBox(height: 10),
 
-                    if (selectedImage != null)
-                      Image.file(selectedImage!, height: 120),
+                    if (editImages.isNotEmpty)
+                      SizedBox(
+                        height: 90,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: List.generate(editImages.length, (i) {
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.file(
+                                        editImages[i],
+                                        width: 90,
+                                        height: 90,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 2,
+                                      right: 2,
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setDialogState(
+                                            () => editImages.removeAt(i),
+                                          );
+                                        },
+                                        child: const CircleAvatar(
+                                          radius: 11,
+                                          backgroundColor: Colors.black54,
+                                          child: Icon(
+                                            Icons.close,
+                                            size: 14,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -519,6 +557,7 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
                       editCondition,
                       editLocationController.text.trim(),
                       editNegotiable,
+                      editImages,
                     );
 
                     if (dialogContext.mounted) {
@@ -543,7 +582,8 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
     selectedCategory = kProductCategories.first;
     selectedCondition = kProductConditions.first;
     negotiable = false;
-    selectedImage = null;
+
+    List<File> addImages = [];
 
     showDialog(
       context: context,
@@ -639,23 +679,63 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
 
                     ElevatedButton.icon(
                       onPressed: () async {
-                        await pickImage();
-                        setDialogState(() {});
+                        final picked = await picker.pickMultiImage(
+                          imageQuality: 80,
+                        );
+                        if (picked.isNotEmpty) {
+                          setDialogState(() {
+                            addImages.addAll(picked.map((x) => File(x.path)));
+                          });
+                        }
                       },
-                      icon: const Icon(Icons.image),
-                      label: const Text("Resim Seç"),
+                      icon: const Icon(Icons.add_photo_alternate),
+                      label: const Text("Fotoğraf(lar) Seç"),
                     ),
 
                     const SizedBox(height: 10),
 
-                    if (selectedImage != null)
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.file(
-                          selectedImage!,
-                          height: 120,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
+                    if (addImages.isNotEmpty)
+                      SizedBox(
+                        height: 90,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: addImages.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 8),
+                          itemBuilder: (context, i) {
+                            return Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.file(
+                                    addImages[i],
+                                    width: 90,
+                                    height: 90,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 2,
+                                  right: 2,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      setDialogState(
+                                        () => addImages.removeAt(i),
+                                      );
+                                    },
+                                    child: const CircleAvatar(
+                                      radius: 11,
+                                      backgroundColor: Colors.black54,
+                                      child: Icon(
+                                        Icons.close,
+                                        size: 14,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ),
                   ],
@@ -672,7 +752,7 @@ class _PiPazarScreenState extends State<PiPazarScreen> {
 
                 ElevatedButton(
                   onPressed: () async {
-                    await createProduct();
+                    await createProduct(addImages);
 
                     if (dialogContext.mounted) {
                       Navigator.pop(dialogContext);

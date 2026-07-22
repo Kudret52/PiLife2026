@@ -20,6 +20,57 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   late Map item = Map.from(widget.item);
   bool togglingSold = false;
 
+  List<Map> extraImages = [];
+  int currentImageIndex = 0;
+  final PageController pageController = PageController();
+
+  @override
+  void initState() {
+    super.initState();
+    loadExtraImages();
+  }
+
+  Future<void> loadExtraImages() async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+          "https://lifeos.cadinindiyari.com/api/get_product_images.php"
+          "?product_id=${item["id"]}",
+        ),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (data["success"] == true && mounted) {
+        setState(() {
+          extraImages = List<Map>.from(data["images"] ?? []);
+        });
+      }
+    } catch (e) {
+      debugPrint("loadExtraImages hata: $e");
+    }
+  }
+
+  Future<void> deleteExtraImage(int imageId) async {
+    try {
+      final response = await http.post(
+        Uri.parse(
+          "https://lifeos.cadinindiyari.com/api/delete_product_image.php",
+        ),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"image_id": imageId, "user_id": UserService.id}),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (data["success"] == true) {
+        await loadExtraImages();
+      }
+    } catch (e) {
+      debugPrint("deleteExtraImage hata: $e");
+    }
+  }
+
   Future<void> addFavorite(BuildContext context) async {
     try {
       final response = await http.post(
@@ -81,6 +132,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   @override
+  void dispose() {
+    pageController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final bool isOwner =
         item["user_id"].toString() == UserService.id.toString();
@@ -96,44 +153,129 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (item["image"] != null && item["image"].toString().isNotEmpty)
-              Stack(
-                children: [
-                  Opacity(
-                    opacity: isSold ? 0.4 : 1,
-                    child: Image.network(
-                      item["image"].toString(),
-                      width: double.infinity,
+            Builder(
+              builder: (context) {
+                final List<String> allImages = [
+                  if (item["image"] != null &&
+                      item["image"].toString().isNotEmpty)
+                    item["image"].toString(),
+                  ...extraImages.map((e) => e["image_path"].toString()),
+                ];
+
+                if (allImages.isEmpty) return const SizedBox();
+
+                return Stack(
+                  children: [
+                    SizedBox(
                       height: 300,
-                      fit: BoxFit.cover,
+                      child: PageView.builder(
+                        controller: pageController,
+                        itemCount: allImages.length,
+                        onPageChanged: (index) {
+                          setState(() => currentImageIndex = index);
+                        },
+                        itemBuilder: (context, index) {
+                          final isExtra = index > 0 || item["image"] == null;
+                          final extraIndex =
+                              (item["image"] != null &&
+                                  item["image"].toString().isNotEmpty)
+                              ? index - 1
+                              : index;
+
+                          return Stack(
+                            children: [
+                              Opacity(
+                                opacity: isSold ? 0.4 : 1,
+                                child: Image.network(
+                                  allImages[index],
+                                  width: double.infinity,
+                                  height: 300,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              if (isOwner &&
+                                  isExtra &&
+                                  extraIndex >= 0 &&
+                                  extraIndex < extraImages.length)
+                                Positioned(
+                                  top: 10,
+                                  right: 10,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      deleteExtraImage(
+                                        int.parse(
+                                          extraImages[extraIndex]["id"]
+                                              .toString(),
+                                        ),
+                                      );
+                                    },
+                                    child: const CircleAvatar(
+                                      backgroundColor: Colors.black54,
+                                      child: Icon(
+                                        Icons.delete,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                  if (isSold)
-                    Positioned.fill(
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 22,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Text(
-                            "SATILDI",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 22,
-                              letterSpacing: 1,
+
+                    if (isSold)
+                      Positioned.fill(
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 22,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              "SATILDI",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 22,
+                                letterSpacing: 1,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                ],
-              ),
+
+                    if (allImages.length > 1)
+                      Positioned(
+                        bottom: 12,
+                        left: 0,
+                        right: 0,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(allImages.length, (i) {
+                            return Container(
+                              width: 7,
+                              height: 7,
+                              margin: const EdgeInsets.symmetric(horizontal: 3),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: i == currentImageIndex
+                                    ? Colors.white
+                                    : Colors.white.withValues(alpha: 0.5),
+                              ),
+                            );
+                          }),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
 
             Padding(
               padding: const EdgeInsets.all(20),
