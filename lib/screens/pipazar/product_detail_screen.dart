@@ -24,10 +24,204 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   int currentImageIndex = 0;
   final PageController pageController = PageController();
 
+  List comments = [];
+  double avgRating = 0;
+  int totalRatings = 0;
+  bool loadingComments = true;
+
+  bool isFavorite = false;
+
   @override
   void initState() {
     super.initState();
     loadExtraImages();
+    loadComments();
+    checkFavoriteStatus();
+  }
+
+  Future<void> checkFavoriteStatus() async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+          "https://lifeos.cadinindiyari.com/api/get_user_favorites.php"
+          "?user_id=${UserService.id}",
+        ),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (!mounted) return;
+
+      if (data["success"] == true) {
+        final favorites = List.from(data["favorites"] ?? []);
+        final productId = int.tryParse(item["id"].toString());
+
+        setState(() {
+          isFavorite = favorites.any(
+            (f) => int.tryParse(f.toString()) == productId,
+          );
+        });
+      }
+    } catch (e) {
+      debugPrint("checkFavoriteStatus hata: $e");
+    }
+  }
+
+  Future<void> loadComments() async {
+    try {
+      final commentsResponse = await http.get(
+        Uri.parse(
+          "https://lifeos.cadinindiyari.com/api/get_comments.php"
+          "?product_id=${item["id"]}",
+        ),
+      );
+
+      final ratingResponse = await http.get(
+        Uri.parse(
+          "https://lifeos.cadinindiyari.com/api/get_rating.php"
+          "?product_id=${item["id"]}",
+        ),
+      );
+
+      final commentsData = jsonDecode(commentsResponse.body);
+      final ratingData = jsonDecode(ratingResponse.body);
+
+      if (!mounted) return;
+
+      setState(() {
+        loadingComments = false;
+
+        if (commentsData["success"] == true) {
+          comments = commentsData["comments"] ?? [];
+        }
+
+        if (ratingData["success"] == true && ratingData["rating"] != null) {
+          final avg = ratingData["rating"]["avg_rating"];
+          final total = ratingData["rating"]["total"];
+          avgRating = avg != null ? double.tryParse(avg.toString()) ?? 0 : 0;
+          totalRatings = total != null
+              ? int.tryParse(total.toString()) ?? 0
+              : 0;
+        }
+      });
+    } catch (e) {
+      debugPrint("loadComments hata: $e");
+      if (mounted) setState(() => loadingComments = false);
+    }
+  }
+
+  Future<void> submitReview(int rating, String comment) async {
+    try {
+      final response = await http.post(
+        Uri.parse("https://lifeos.cadinindiyari.com/api/add_comment.php"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "product_id": item["id"],
+          "user_id": UserService.id,
+          "rating": rating,
+          "comment": comment,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (!mounted) return;
+
+      if (data["success"] == true) {
+        await loadComments();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Değerlendirmeniz eklendi.")),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data["message"]?.toString() ?? "Bir hata oluştu."),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Hata: $e")));
+    }
+  }
+
+  void showReviewDialog() {
+    int selectedStars = 5;
+    final commentController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text("Değerlendirme Yap"),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(5, (i) {
+                        final starValue = i + 1;
+                        return IconButton(
+                          onPressed: () {
+                            setDialogState(() => selectedStars = starValue);
+                          },
+                          icon: Icon(
+                            starValue <= selectedStars
+                                ? Icons.star_rounded
+                                : Icons.star_border_rounded,
+                            color: Colors.amber,
+                            size: 32,
+                          ),
+                        );
+                      }),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: commentController,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: "Yorumunuz",
+                        hintText: "Ürün/satıcı hakkındaki deneyiminizi yazın",
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text("İptal"),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (commentController.text.trim().isEmpty) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(
+                          content: Text("Lütfen bir yorum yazın."),
+                        ),
+                      );
+                      return;
+                    }
+
+                    submitReview(selectedStars, commentController.text.trim());
+
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text("Gönder"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> loadExtraImages() async {
@@ -84,17 +278,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
       final data = jsonDecode(response.body);
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              data["success"] == true
-                  ? "Favorilere eklendi."
-                  : "Favorilere eklenirken bir hata oluştu.",
-            ),
-          ),
-        );
+      if (!context.mounted) return;
+
+      if (data["success"] == true) {
+        setState(() {
+          isFavorite = data["favorite"] == true;
+        });
       }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            data["success"] == true
+                ? (isFavorite
+                      ? "Favorilere eklendi."
+                      : "Favorilerden çıkarıldı.")
+                : "Favori işlemi sırasında bir hata oluştu.",
+          ),
+        ),
+      );
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(
@@ -406,11 +608,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       width: double.infinity,
                       height: 50,
                       child: OutlinedButton.icon(
-                        icon: const Icon(
-                          Icons.favorite_border,
-                          color: Colors.red,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: isFavorite
+                              ? Colors.white
+                              : Colors.red,
+                          backgroundColor: isFavorite
+                              ? Colors.red
+                              : Colors.transparent,
+                          side: const BorderSide(color: Colors.red),
                         ),
-                        label: const Text("Favorilere Ekle"),
+                        icon: Icon(
+                          isFavorite ? Icons.favorite : Icons.favorite_border,
+                        ),
+                        label: Text(
+                          isFavorite ? "Favorilerden Çıkar" : "Favorilere Ekle",
+                        ),
                         onPressed: () => addFavorite(context),
                       ),
                     ),
@@ -464,6 +676,102 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       ),
                     ),
                   ],
+
+                  const SizedBox(height: 35),
+
+                  const Divider(),
+
+                  const SizedBox(height: 15),
+
+                  Row(
+                    children: [
+                      const Text(
+                        "Değerlendirmeler",
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (totalRatings > 0) ...[
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.star_rounded,
+                          color: Colors.amber,
+                          size: 20,
+                        ),
+                        Text(
+                          " ${avgRating.toStringAsFixed(1)} ($totalRatings)",
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ],
+                  ),
+
+                  if (!isOwner)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: showReviewDialog,
+                        icon: const Icon(Icons.rate_review_outlined),
+                        label: const Text("Yorum Yap"),
+                      ),
+                    ),
+
+                  const SizedBox(height: 10),
+
+                  if (loadingComments)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (comments.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: Text(
+                        "Henüz değerlendirme yapılmamış.",
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    )
+                  else
+                    ...comments.map((c) {
+                      final stars = int.tryParse(c["rating"].toString()) ?? 0;
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    c["username"]?.toString() ?? "",
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Row(
+                                    children: List.generate(5, (i) {
+                                      return Icon(
+                                        i < stars
+                                            ? Icons.star_rounded
+                                            : Icons.star_border_rounded,
+                                        color: Colors.amber,
+                                        size: 15,
+                                      );
+                                    }),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(c["comment"]?.toString() ?? ""),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
                 ],
               ),
             ),
