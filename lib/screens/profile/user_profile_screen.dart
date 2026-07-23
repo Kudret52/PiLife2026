@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../../services/user_service.dart';
 import '../chat/chat_screen.dart';
+import '../../widgets/badge_chips.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final int userId;
@@ -26,6 +27,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   int followers = 0;
   int totalProducts = 0;
+  List badges = [];
+  double? rating;
+  int ratingCount = 0;
 
   Map user = {};
 
@@ -63,10 +67,17 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         ),
       );
 
+      final badgesResponse = await http.get(
+        Uri.parse(
+          "https://lifeos.cadinindiyari.com/api/get_user_badges.php?user_id=${widget.userId}",
+        ),
+      );
+
       final profileData = jsonDecode(profile.body);
       final followData = jsonDecode(follow.body);
       final countData = jsonDecode(followerCount.body);
       final productData = jsonDecode(productResponse.body);
+      final badgesData = jsonDecode(badgesResponse.body);
 
       if (mounted) {
         setState(() {
@@ -76,10 +87,19 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             user = profileData["user"];
             totalProducts =
                 int.tryParse(profileData["product_count"].toString()) ?? 0;
+            rating = profileData["rating"] != null
+                ? double.tryParse(profileData["rating"].toString())
+                : null;
+            ratingCount =
+                int.tryParse(profileData["rating_count"].toString()) ?? 0;
           }
 
           if (productData["success"] == true) {
             products = productData["products"];
+          }
+
+          if (badgesData["success"] == true) {
+            badges = badgesData["badges"] ?? [];
           }
 
           following = followData["following"] == true;
@@ -148,6 +168,32 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 style: const TextStyle(color: Colors.grey),
               ),
             ),
+
+            if (rating != null) ...[
+              const SizedBox(height: 10),
+              Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.star_rounded,
+                      color: Colors.amber,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      "${rating!.toStringAsFixed(1)} ($ratingCount değerlendirme)",
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            if (badges.isNotEmpty) ...[
+              const SizedBox(height: 15),
+              BadgeChips(badges: badges),
+            ],
 
             const SizedBox(height: 30),
 
@@ -238,19 +284,32 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   child: ListTile(
-                    leading:
-                        product["image"] != null &&
-                            product["image"].toString().isNotEmpty
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.network(
-                              product["image"].toString(),
-                              width: 60,
-                              height: 60,
-                              fit: BoxFit.cover,
-                            ),
-                          )
-                        : const Icon(Icons.image),
+                    leading: SizedBox(
+                      width: 60,
+                      height: 60,
+                      child:
+                          product["image"] != null &&
+                              product["image"].toString().isNotEmpty
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(
+                                product["image"].toString(),
+                                width: 60,
+                                height: 60,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    color: Colors.grey.shade200,
+                                    child: const Icon(
+                                      Icons.broken_image,
+                                      color: Colors.grey,
+                                    ),
+                                  );
+                                },
+                              ),
+                            )
+                          : const Icon(Icons.image),
+                    ),
 
                     title: Text(product["title"].toString()),
 
